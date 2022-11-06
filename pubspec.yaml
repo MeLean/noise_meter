@@ -9,9 +9,11 @@ environment:
 dependencies:
   noise_meter: ^3.1.0
   assets_audio_player: ^3.0.5
+  icons_launcher: ^2.0.5
+
   flutter:
     sdk: flutter
-
+    
   cupertino_icons: ^1.0.2
 
 dev_dependencies:
@@ -57,3 +59,15 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/custom-fonts/#from-packages
+
+icons_launcher:
+  image_path: 'assets/launcher/noise_meter.png'
+  platforms:
+    android:
+      enable: true
+    ios:
+      enable: true
+    web:
+      enable: true
+      image_path: 'assets/launcher/noise_meter.png'
+      favicon_path: 'assets/launcher/noise_meter.png'
