@@ -78,6 +78,12 @@ class _NoiseMeterHomePageState extends State<MyHomePage> {
               _noiseLevel,
               style: Theme.of(context).textTheme.headline4,
             ),
+            TextButton(
+              onPressed: () => {},
+              child: const Text(
+                'start service',
+              ),
+            ),
           ],
         ),
       ),
