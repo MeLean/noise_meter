@@ -1,4 +1,4 @@
-package eu.itido.noise_meter.noise_meter
+package eu.itido.noise_meter
 
 import io.flutter.embedding.android.FlutterActivity
 
