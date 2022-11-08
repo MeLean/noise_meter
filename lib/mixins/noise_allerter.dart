@@ -12,17 +12,17 @@ mixin NoiseAllerter {
   final AssetsAudioPlayer _audio = AssetsAudioPlayer.newPlayer();
 
   void checkShouldAllert(int intDB) {
-    debugPrint("NOISE: $intDB, _shouldCollect: $_shouldCollect");
+    //debugPrint("NOISE: $intDB, _shouldCollect: $_shouldCollect");
 
     if (_shouldCollect && intDB > _lowNoiseDB) {
       _shouldCollect = false;
       debugPrint("NOISE: $intDB collected");
       if (intDB > _laudNoiseDB) {
-        _play('assets/mp3/to_much_noise.mp3', 0.2);
+        _play('assets/mp3/to_much_noise.mp3', 1.0);
       } else if (intDB > _mediumNoiseDB) {
-        _play('assets/mp3/it_is_noisy.mp3', 0.2);
+        _play('assets/mp3/it_is_noisy.mp3', 1.0);
       } else {
-        _play('assets/mp3/it_is_noisy.mp3', 0.2);
+        _play('assets/mp3/it_is_noisy.mp3', 0.5);
       }
 
       _timer = Timer(const Duration(milliseconds: 3000), () {

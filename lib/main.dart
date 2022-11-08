@@ -1,48 +1,44 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:itido_noise_meter/mixins/app_closer.dart';
 import 'package:noise_meter/noise_meter.dart';
 import 'package:itido_noise_meter/mixins/noise_allerter.dart';
 import 'package:itido_noise_meter/mixins/noise_listener.dart';
 import 'dart:isolate';
-import 'package:flutter_foreground_task/flutter_foreground_task.dart';
-
-void main() => runApp(const NoiseMeterApp());
 
 @pragma('vm:entry-point')
 void startCallback() {
   FlutterForegroundTask.setTaskHandler(MyTaskHandler());
 }
 
-class MyTaskHandler extends TaskHandler with NoiseListener {
-  SendPort? _sendPort;
-  int _eventCount = 0;
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const NoiseMeterApp());
+}
 
+class MyTaskHandler extends TaskHandler with NoiseListener, NoiseAllerter {
   @override
   Future<void> onStart(DateTime timestamp, SendPort? sendPort) async {
-    _sendPort = sendPort;
+    initListener((noiseReading) {
+      int intDB = _extractMeanDecibelInt(noiseReading);
+      _updateForgroundTask(intDB);
+      checkShouldAllert(intDB);
+      sendPort?.send(noiseReading);
+    });
 
-    // // You can use the getData function to get the stored data.
-    // final customData =
-    //     await FlutterForegroundTask.getData<String>(key: 'customData');
-    // debugPrint('customData: $customData');
+    startNoiseListening();
   }
 
   @override
-  Future<void> onEvent(DateTime timestamp, SendPort? sendPort) async {
-    FlutterForegroundTask.updateService(
-      notificationTitle: 'Itido Noise meter',
-      notificationText: 'eventCount: $_eventCount',
-    );
-
-    // Send data to the main isolate.
-    sendPort?.send(_eventCount);
-
-    _eventCount++;
-  }
+  Future<void> onEvent(DateTime timestamp, SendPort? sendPort) async {}
 
   @override
   Future<void> onDestroy(DateTime timestamp, SendPort? sendPort) async {
     // You can use the clearAllData function to clear all the stored data.
+    stopAlerting();
+    stopNoiseListening();
     await FlutterForegroundTask.clearAllData();
   }
 
@@ -54,16 +50,7 @@ class MyTaskHandler extends TaskHandler with NoiseListener {
 
   @override
   void onNotificationPressed() {
-    // Called when the notification itself on the Android platform is pressed.
-    //
-    // "android.permission.SYSTEM_ALERT_WINDOW" permission must be granted for
-    // this function to be called.
-
-    // Note that the app will only route to "/resume-route" when it is exited so
-    // it will usually be necessary to send a message through the send port to
-    // signal it to restore state when the app is already started.
-    FlutterForegroundTask.launchApp("/resume-route");
-    _sendPort?.send('onNotificationPressed');
+    FlutterForegroundTask.launchApp('/');
   }
 }
 
@@ -108,6 +95,7 @@ class _NoiseMeterHomePageState extends State<HomePage>
     startNoiseListening();
 
     _initForegroundTask();
+    _startForegroundTask();
     _ambiguate(WidgetsBinding.instance)?.addPostFrameCallback((_) async {
       // You can get the previous ReceivePort without restarting the service.
       if (await FlutterForegroundTask.isRunningService) {
@@ -121,7 +109,6 @@ class _NoiseMeterHomePageState extends State<HomePage>
   void dispose() {
     stopNoiseListening();
     stopAlerting();
-
     _closeReceivePort();
     super.dispose();
   }
@@ -149,21 +136,16 @@ class _NoiseMeterHomePageState extends State<HomePage>
                 Expanded(
                   child: Align(
                     alignment: FractionalOffset.bottomCenter,
-                    child: ElevatedButton(
-                      onPressed: () async => {
-                        if (await FlutterForegroundTask.isRunningService)
-                          {_stopForegroundTask()}
-                        else
-                          {_startServiceAndCloseApp()}
-                      },
-                      child: FutureBuilder(
-                          future: _getServiceText(),
-                          builder: (
-                            BuildContext context,
-                            AsyncSnapshot<String> text,
-                          ) {
-                            return Text(text.data ?? "");
-                          }),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        ElevatedButton(
+                            onPressed: () => {_minimizeApp()},
+                            child: const Text("Minimize")),
+                        ElevatedButton(
+                            onPressed: () => {_teminateApp()},
+                            child: const Text("Terminate")),
+                      ],
                     ),
                   ),
                 ),
@@ -176,11 +158,10 @@ class _NoiseMeterHomePageState extends State<HomePage>
   }
 
   void _onNoiseData(NoiseReading noiseReading) {
-    var data = noiseReading.meanDecibel;
-    var intDB = data.isInfinite ? 0 : data.toInt();
+    var intDB = _extractMeanDecibelInt(noiseReading);
     setState(() {
       _noiseLevel = '$intDB';
-      checkShouldAllert(intDB);
+      _updateForgroundTaskAndCheck(intDB);
     });
   }
 
@@ -194,15 +175,13 @@ class _NoiseMeterHomePageState extends State<HomePage>
         channelImportance: NotificationChannelImportance.LOW,
         priority: NotificationPriority.LOW,
         iconData: const NotificationIconData(
-          resType: ResourceType.mipmap,
-          resPrefix: ResourcePrefix.ic,
-          name: 'launcher',
-          backgroundColor: Colors.orange,
-        ),
-        buttons: [
-          const NotificationButton(id: 'sendButton', text: 'Send'),
-          const NotificationButton(id: 'testButton', text: 'Test'),
-        ],
+            resType: ResourceType.mipmap,
+            resPrefix: ResourcePrefix.ic,
+            name: 'launcher'),
+        // buttons: [
+        //   const NotificationButton(id: 'sendButton', text: 'Send'),
+        //   const NotificationButton(id: 'testButton', text: 'Test'),
+        // ],
       ),
       iosNotificationOptions: const IOSNotificationOptions(
         showNotification: true,
@@ -219,14 +198,6 @@ class _NoiseMeterHomePageState extends State<HomePage>
   }
 
   Future<bool> _startForegroundTask() async {
-    // "android.permission.SYSTEM_ALERT_WINDOW" permission must be granted for
-    // onNotificationPressed function to be called.
-    //
-    // When the notification is pressed while permission is denied,
-    // the onNotificationPressed function is not called and the app opens.
-    //
-    // If you do not use the onNotificationPressed or launchApp function,
-    // you do not need to write this code.
     if (!await FlutterForegroundTask.canDrawOverlays) {
       final isGranted =
           await FlutterForegroundTask.openSystemAlertWindowSettings();
@@ -237,7 +208,7 @@ class _NoiseMeterHomePageState extends State<HomePage>
     }
 
     // You can save data using the saveData function.
-    await FlutterForegroundTask.saveData(key: 'customData', value: 'hello');
+    //await FlutterForegroundTask.saveData(key: 'customData', value: 'hello');
 
     bool reqResult;
     if (await FlutterForegroundTask.isRunningService) {
@@ -258,6 +229,11 @@ class _NoiseMeterHomePageState extends State<HomePage>
     return _registerReceivePort(receivePort);
   }
 
+  Future<bool> _updateForgroundTaskAndCheck(int intDB) {
+    checkShouldAllert(intDB);
+    return _updateForgroundTask(intDB);
+  }
+
   Future<bool> _stopForegroundTask() async {
     return await FlutterForegroundTask.stopService();
   }
@@ -268,6 +244,7 @@ class _NoiseMeterHomePageState extends State<HomePage>
     if (receivePort != null) {
       _receivePort = receivePort;
       _receivePort?.listen((message) {
+        debugPrint('message: $message');
         if (message is int) {
           debugPrint('eventCount: $message');
         } else if (message is String) {
@@ -292,14 +269,30 @@ class _NoiseMeterHomePageState extends State<HomePage>
 
   T? _ambiguate<T>(T? value) => value;
 
-  Future<String> _getServiceText() async {
-    return await FlutterForegroundTask.isRunningService
-        ? 'Stop service'
-        : 'Start service';
-  }
-
-  void _startServiceAndCloseApp() {
-    _startForegroundTask();
+  void _teminateApp() {
+    _stopForegroundTask();
     closeApp();
   }
+
+  void _minimizeApp() async {
+    if (!await FlutterForegroundTask.isRunningService) {
+      _initForegroundTask();
+      _startForegroundTask();
+    }
+
+    FlutterForegroundTask.minimizeApp();
+  }
+}
+
+Future<bool> _updateForgroundTask(int intDB) {
+  return FlutterForegroundTask.updateService(
+    notificationTitle: 'Itido Noise listener',
+    notificationText: 'noise: $intDB',
+  );
+}
+
+int _extractMeanDecibelInt(NoiseReading noiseReading) {
+  var data = noiseReading.meanDecibel;
+  var intDB = data.isInfinite ? 0 : data.toInt();
+  return intDB;
 }
