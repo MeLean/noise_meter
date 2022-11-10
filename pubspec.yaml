@@ -11,6 +11,7 @@ dependencies:
   assets_audio_player: ^3.0.5
   icons_launcher: ^2.0.5
   flutter_foreground_task: ^3.10.0
+  permission_handler: any
 
   flutter:
     sdk: flutter

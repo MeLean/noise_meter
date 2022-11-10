@@ -18,17 +18,17 @@ void main() {
   runApp(const NoiseMeterApp());
 }
 
-class MyTaskHandler extends TaskHandler with NoiseListener, NoiseAllerter {
+class MyTaskHandler extends TaskHandler {
+  late StreamSubscription<NoiseReading> _noiseSubscription;
+
   @override
   Future<void> onStart(DateTime timestamp, SendPort? sendPort) async {
-    initListener((noiseReading) {
-      int intDB = _extractMeanDecibelInt(noiseReading);
-      _updateForgroundTask(intDB);
-      checkShouldAllert(intDB);
+    _noiseSubscription = NoiseMeter().noiseStream.listen((noiseReading) {
+      _updateForgroundTask(_extractMeanDecibelInt(noiseReading));
+
+      // Send data to the main isolate.
       sendPort?.send(noiseReading);
     });
-
-    startNoiseListening();
   }
 
   @override
@@ -36,9 +36,7 @@ class MyTaskHandler extends TaskHandler with NoiseListener, NoiseAllerter {
 
   @override
   Future<void> onDestroy(DateTime timestamp, SendPort? sendPort) async {
-    // You can use the clearAllData function to clear all the stored data.
-    stopAlerting();
-    stopNoiseListening();
+    _noiseSubscription.cancel();
     await FlutterForegroundTask.clearAllData();
   }
 
