@@ -8,6 +8,8 @@ import 'package:itido_noise_meter/mixins/noise_allerter.dart';
 import 'package:itido_noise_meter/mixins/noise_listener.dart';
 import 'dart:isolate';
 
+import 'package:permission_handler/permission_handler.dart';
+
 @pragma('vm:entry-point')
 void startCallback() {
   FlutterForegroundTask.setTaskHandler(MyTaskHandler());
@@ -196,35 +198,40 @@ class _NoiseMeterHomePageState extends State<HomePage>
   }
 
   Future<bool> _startForegroundTask() async {
-    if (!await FlutterForegroundTask.canDrawOverlays) {
-      final isGranted =
-          await FlutterForegroundTask.openSystemAlertWindowSettings();
-      if (!isGranted) {
-        debugPrint('SYSTEM_ALERT_WINDOW permission denied!');
-        return false;
+    var result = false;
+    if (await Permission.notification.request().isGranted) {
+      if (!await FlutterForegroundTask.canDrawOverlays) {
+        final isGranted =
+            await FlutterForegroundTask.openSystemAlertWindowSettings();
+        if (!isGranted) {
+          debugPrint('SYSTEM_ALERT_WINDOW permission denied!');
+          return false;
+        }
       }
+
+      // You can save data using the saveData function.
+      //await FlutterForegroundTask.saveData(key: 'customData', value: 'hello');
+
+      bool reqResult;
+      if (await FlutterForegroundTask.isRunningService) {
+        reqResult = await FlutterForegroundTask.restartService();
+      } else {
+        reqResult = await FlutterForegroundTask.startService(
+          notificationTitle: 'Foreground Service is running',
+          notificationText: 'Tap to return to the app',
+          callback: startCallback,
+        );
+      }
+
+      ReceivePort? receivePort;
+      if (reqResult) {
+        receivePort = await FlutterForegroundTask.receivePort;
+      }
+
+      result = _registerReceivePort(receivePort);
     }
 
-    // You can save data using the saveData function.
-    //await FlutterForegroundTask.saveData(key: 'customData', value: 'hello');
-
-    bool reqResult;
-    if (await FlutterForegroundTask.isRunningService) {
-      reqResult = await FlutterForegroundTask.restartService();
-    } else {
-      reqResult = await FlutterForegroundTask.startService(
-        notificationTitle: 'Foreground Service is running',
-        notificationText: 'Tap to return to the app',
-        callback: startCallback,
-      );
-    }
-
-    ReceivePort? receivePort;
-    if (reqResult) {
-      receivePort = await FlutterForegroundTask.receivePort;
-    }
-
-    return _registerReceivePort(receivePort);
+    return result;
   }
 
   Future<bool> _updateForgroundTaskAndCheck(int intDB) {
